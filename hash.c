@@ -3,6 +3,7 @@
 #include "memcached.h"
 #include "jenkins_hash.h"
 #include "murmur3_hash.h"
+#include "debug_hash.h"
 
 int hash_init(enum hashfunc_type type) {
     switch(type) {
@@ -14,6 +15,10 @@ int hash_init(enum hashfunc_type type) {
             hash = MurmurHash3_x86_32;
             settings.hash_algorithm = "murmur3";
             break;
+        case DEBUG_HASH:
+        	hash = debug_hash;
+        	settings.hash_algorithm = "debug";
+        	break;
         default:
             return -1;
     }

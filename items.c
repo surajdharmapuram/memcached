@@ -271,6 +271,7 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
 
 static void do_item_link_q(item *it) { /* item is the new head */
     item **head, **tail;
+    assert(it->slabs_clsid < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
     head = &heads[it->slabs_clsid];
@@ -293,7 +294,10 @@ static void item_link_q(item *it) {
 }
 
 static void do_item_unlink_q(item *it) {
+	char* key = ITEM_key(it);
+	printf("Trying to unlink item %s", key);
     item **head, **tail;
+    assert(it->slabs_clsid < LARGEST_ID);
     head = &heads[it->slabs_clsid];
     tail = &tails[it->slabs_clsid];
 
@@ -331,10 +335,11 @@ int do_item_link(item *it, const uint32_t hv) {
     stats.curr_items += 1;
     stats.total_items += 1;
     STATS_UNLOCK();
-
+    printf("Setting me %d\n", settings.use_cas);
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
-    assoc_insert(it, hv);
+    //assoc_insert(it, hv);
+    assoc_hopscotch_insert(it,hv);
     item_link_q(it);
     refcount_incr(&it->refcount);
 
@@ -672,7 +677,10 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv) {
-    item *it = assoc_find(key, nkey, hv);
+    //item *it = assoc_find(key, nkey, hv);
+	//TODO commented by Suraj
+	item* it = assoc_hopscotch_find(key,nkey,hv);
+
     if (it != NULL) {
         refcount_incr(&it->refcount);
         /* Optimization for slab reassignment. prevents popular items from
@@ -1092,6 +1100,7 @@ int init_lru_maintainer(void) {
 
 static void crawler_link_q(item *it) { /* item is the new tail */
     item **head, **tail;
+    assert(it->slabs_clsid < LARGEST_ID);
     assert(it->it_flags == 1);
     assert(it->nbytes == 0);
 
@@ -1113,6 +1122,7 @@ static void crawler_link_q(item *it) { /* item is the new tail */
 
 static void crawler_unlink_q(item *it) {
     item **head, **tail;
+    assert(it->slabs_clsid < LARGEST_ID);
     head = &heads[it->slabs_clsid];
     tail = &tails[it->slabs_clsid];
 

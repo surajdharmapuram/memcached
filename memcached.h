@@ -77,7 +77,7 @@
 
 /* Slab sizing definitions. */
 #define POWER_SMALLEST 1
-#define POWER_LARGEST  256 /* actual cap is 255 */
+#define POWER_LARGEST  255
 #define CHUNK_ALIGN_BYTES 8
 /* slab class max is a 6-bit number, -1. */
 #define MAX_NUMBER_OF_SLAB_CLASSES (63 + 1)
@@ -551,6 +551,7 @@ extern int daemonize(int nochdir, int noclose);
 #include "trace.h"
 #include "hash.h"
 #include "util.h"
+#include "assoc_hopscotch.h"
 
 /*
  * Functions such as the libevent-related calls that need to do cross-thread

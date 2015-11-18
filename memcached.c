@@ -5081,7 +5081,8 @@ int main (int argc, char **argv) {
     bool udp_specified = false;
     bool start_lru_maintainer = false;
     bool start_lru_crawler = false;
-    enum hashfunc_type hash_type = JENKINS_HASH;
+    //TODO revert to JENKINS
+    enum hashfunc_type hash_type = DEBUG_HASH;
     uint32_t tocrawl;
 
     char *subopts;
@@ -5612,7 +5613,9 @@ int main (int argc, char **argv) {
 
     /* initialize other stuff */
     stats_init();
-    assoc_init(settings.hashpower_init);
+    //TODO commented by Suraj.
+   // assoc_init(settings.hashpower_init);
+    assoc_hopscotch_init(settings.hashpower_init);
     conn_init();
     slabs_init(settings.maxbytes, settings.factor, preallocate);
 
