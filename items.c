@@ -339,9 +339,13 @@ int do_item_link(item *it, const uint32_t hv) {
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
     //assoc_insert(it, hv);
+<<<<<<< HEAD
     int ret = assoc_hopscotch_insert(it,hv);
     if(ret == 0) // could not insert.
     	return 0;
+=======
+    assoc_hopscotch_insert(it,hv);
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
     item_link_q(it);
     refcount_incr(&it->refcount);
 
@@ -356,8 +360,12 @@ void do_item_unlink(item *it, const uint32_t hv) {
         stats.curr_bytes -= ITEM_ntotal(it);
         stats.curr_items -= 1;
         STATS_UNLOCK();
+<<<<<<< HEAD
         //assoc_delete(ITEM_key(it), it->nkey, hv);
         assoc_hopscotch_delete(ITEM_key(it), it->nkey, hv);
+=======
+        assoc_delete(ITEM_key(it), it->nkey, hv);
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
         item_unlink_q(it);
         do_item_remove(it);
     }
@@ -372,8 +380,12 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
         stats.curr_bytes -= ITEM_ntotal(it);
         stats.curr_items -= 1;
         STATS_UNLOCK();
+<<<<<<< HEAD
         //assoc_delete(ITEM_key(it), it->nkey, hv);
         assoc_hopscotch_delete(ITEM_key(it), it->nkey, hv);
+=======
+        assoc_delete(ITEM_key(it), it->nkey, hv);
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
         do_item_unlink_q(it);
         do_item_remove(it);
     }

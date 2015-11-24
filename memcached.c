@@ -2394,6 +2394,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
         }
 
         if (stored == NOT_STORED) {
+<<<<<<< HEAD
         	int ret = 1;
             if (old_it != NULL)
                 item_replace(old_it, it, hv);
@@ -2404,6 +2405,16 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
             if(ret == 1)
             	stored = STORED;
+=======
+            if (old_it != NULL)
+                item_replace(old_it, it, hv);
+            else
+                do_item_link(it, hv);
+
+            c->cas = ITEM_get_cas(it);
+
+            stored = STORED;
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
         }
     }
 
@@ -5063,7 +5074,11 @@ int main (int argc, char **argv) {
     int c;
     bool lock_memory = false;
     bool do_daemonize = false;
+<<<<<<< HEAD
     bool preallocate = false; //TODO
+=======
+    bool preallocate = false;
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
     int maxcore = 0;
     char *username = NULL;
     char *pid_file = NULL;
@@ -5084,7 +5099,11 @@ int main (int argc, char **argv) {
     bool start_lru_maintainer = false;
     bool start_lru_crawler = false;
     //TODO revert to JENKINS
+<<<<<<< HEAD
     enum hashfunc_type hash_type = JENKINS_HASH;
+=======
+    enum hashfunc_type hash_type = DEBUG_HASH;
+>>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
     uint32_t tocrawl;
 
     char *subopts;
