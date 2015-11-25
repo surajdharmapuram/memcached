@@ -14,6 +14,7 @@
  *      Brad Fitzpatrick <brad@danga.com>
  */
 #include "memcached.h"
+#include "debug.h"
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -99,6 +100,10 @@ static void write_bin_error(conn *c, protocol_binary_response_status err,
                             const char *errstr, int swallow);
 
 static void conn_free(conn *c);
+
+/* Debug Stuff */
+int debug_level = 0;
+int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
 
 /** exported globals **/
 struct stats stats;

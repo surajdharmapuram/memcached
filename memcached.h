@@ -544,6 +544,9 @@ extern int daemonize(int nochdir, int noclose);
 #define mutex_lock(x) pthread_mutex_lock(x)
 #define mutex_unlock(x) pthread_mutex_unlock(x)
 
+extern unsigned int hashpower;
+extern unsigned int item_lock_hashpower;
+
 #include "stats.h"
 #include "slabs.h"
 #include "assoc.h"

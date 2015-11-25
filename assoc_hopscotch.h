@@ -8,7 +8,6 @@
 #ifndef ASSOC_HOPSCOTCH_H_
 #define ASSOC_HOPSCOTCH_H_
 
-extern unsigned int hashpower;
 typedef uint32_t BitmapType;
 
 void assoc_hopscotch_init(const int hashpower_init);
