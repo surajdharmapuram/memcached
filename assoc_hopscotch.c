@@ -31,21 +31,13 @@ typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
 // unsigned int hashpower = HASHPOWER_DEFAULT;
 
-<<<<<<< HEAD
 #define NEIGHBORHOOD 4
-=======
-#define NEIGHBORHOOD 32
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 
 static pthread_mutex_t hash_items_counter_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 struct _Bucket {
 	BitmapType bitmap; // neighborhood info bitmap
 	item* it; // item details
@@ -77,25 +69,15 @@ void assoc_hopscotch_init(const int hashtable_init) {
 	STATS_UNLOCK();
 }
 
-<<<<<<< HEAD
 static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_distance) {
 	Bucket* move_bucket = *free_bucket - (NEIGHBORHOOD - 1);
 	int move_free_dist = NEIGHBORHOOD - 1;
 
-=======
-static void find_closer_free_bucket(Bucket* free_bucket, unsigned int* free_distance) {
-	Bucket* move_bucket = free_bucket - (NEIGHBORHOOD - 1);
-	int move_free_dist = NEIGHBORHOOD - 1;
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 	for (; move_free_dist > 0; --move_free_dist) {
 		BitmapType bitmap = move_bucket->bitmap;
 		int move_new_free_distance = -1;
 		BitmapType mask = 1;
-<<<<<<< HEAD
 		printf("The bitmap for bucket %ld is %u\n", move_bucket - buckets, bitmap);
-=======
-
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 		int i;
 		for (i=0; i<move_free_dist; ++i, mask <<= 1) {
 			if (mask & bitmap) {
@@ -107,21 +89,14 @@ static void find_closer_free_bucket(Bucket* free_bucket, unsigned int* free_dist
 		if (-1 != move_new_free_distance) {
 			// TODO: check why this "if" is there, probably because of concurrency
 			if (bitmap == move_bucket->bitmap) {
-<<<<<<< HEAD
 				printf("Inside here\n");
 				Bucket* new_free_bucket = move_bucket + move_new_free_distance;
 				(*free_bucket)->it = new_free_bucket->it;
 				(*free_bucket)->full = true;
-=======
-				Bucket* new_free_bucket = move_bucket + move_new_free_distance;
-				(free_bucket)->it = new_free_bucket->it;
-				(free_bucket)->full = true;
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 
 				move_bucket->bitmap |= (1U << move_free_dist);
 				move_bucket->bitmap &= ~(1U << move_new_free_distance);
 
-<<<<<<< HEAD
 				*free_bucket = new_free_bucket;
 				*free_distance -= (move_free_dist - move_new_free_distance);
 
@@ -132,15 +107,6 @@ static void find_closer_free_bucket(Bucket* free_bucket, unsigned int* free_dist
 	}
 	*free_bucket = 0;
 	*free_distance = 0;
-=======
-				free_bucket = new_free_bucket;
-				*free_distance -= move_free_dist;
-			}
-		}
-
-		++move_bucket;
-	}
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
@@ -163,7 +129,6 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 		if (!buckets[start_index  + free_distance].full) { printf("Found free bucket\n"); break; }
 	}
 
-<<<<<<< HEAD
 	printf("Hashed to %d at free distance %d, starting at %d at address %p ", hv, free_distance, start_index, it);
 	fflush(stdout);
 
@@ -183,22 +148,6 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 
 	if(current_bucket == 0)
 		return 0;
-=======
-	printf("Hashed to %d at free distance %d, starting at %d ", hv, free_distance, start_index);
-	fflush(stdout);
-
-	unsigned int current_index = start_index + free_distance;
-	// TODO: why do we need a loop here?
-	do {
-		if (free_distance < NEIGHBORHOOD) {
-			buckets[current_index].it = it;
-			buckets[current_index].full = true;
-			buckets[start_index].bitmap |= (1U << free_distance);
-			break;
-		}
-		find_closer_free_bucket(buckets + current_index, &free_distance);
-	} while (buckets[current_index].full);
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 
 	pthread_mutex_lock(&hash_items_counter_lock);
 	hash_items++;
@@ -239,7 +188,6 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 
 }
 
-<<<<<<< HEAD
 void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t hv){
 
 	printf("Entered hopscotch delete\n");
@@ -277,8 +225,6 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 }
 
 
-=======
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
 //TODO move to utils.
 int first_lsb_bit_indx(BitmapType x) {
 	if(0==x)

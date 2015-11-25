@@ -104,10 +104,7 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc) {
     if (prealloc) {
         /* Allocate everything in a big chunk with malloc */
         mem_base = malloc(mem_limit);
-<<<<<<< HEAD
         printf("Membase started at %p\n", mem_base);
-=======
->>>>>>> 16569b8add4070e173dc288b7948e66c2bba58a5
         if (mem_base != NULL) {
             mem_current = mem_base;
             mem_avail = mem_limit;
