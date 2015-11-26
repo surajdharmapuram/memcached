@@ -212,7 +212,8 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 	return 1;
 }
 
-item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv){
+/*
+item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv) {
 
 	register unsigned int start_bucket = hv & hashmask(hashpower);
 	BitmapType hop_info = buckets[start_bucket].bitmap;
@@ -221,7 +222,7 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 
 	if(hop_info == 0U)
 		return NULL;
-	else if(1U == hop_info){
+	else if(1U == hop_info) {
 		DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo is equal to 1\n");
 		if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0))
 			return it;
@@ -229,7 +230,7 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 			return NULL;
 	}
 
-	while(hop_info != 0U){
+	while(hop_info != 0U) {
 		register int i = first_lsb_bit_indx(hop_info);
 		Bucket* current_element = buckets + start_bucket + i;
 		if ((nkey == current_element->it->nkey) && (memcmp(key, ITEM_key(current_element->it), nkey) == 0))
@@ -239,6 +240,82 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 
 	return NULL;
 
+}
+*/
+
+static item* find_item(Bucket* start_bucket, const char* key, const size_t nkey) {
+
+	BitmapType hop_info = start_bucket->bitmap;
+	item* it = start_bucket->it;
+
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo for key %s is %u\n", key, hop_info);
+
+	if (hop_info == 0U) {
+		return NULL;
+	}
+
+	item* ret = NULL;
+
+	uint32_t vs, ve;
+	long start_idx = index_of_bucket(start_bucket);
+
+	if (hop_info == 1U) {
+		DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo is equal to 1\n");
+		do {
+			vs = read_keyver(start_idx);
+
+			if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
+				ret = it;
+			}
+
+			ve = read_keyver(start_idx);
+		} while ((vs & 1) || (vs != ve));
+
+		return ret;
+	}
+
+	while(hop_info != 0U) {
+		int i = first_lsb_bit_indx(hop_info);
+		Bucket* current_element = buckets + start_idx + i;
+
+		bool found = false;
+
+		do {
+			long idx = index_of_bucket(current_element);
+			vs = read_keyver(idx);
+
+			if ((nkey == current_element->it->nkey) && (memcmp(key, ITEM_key(current_element->it), nkey) == 0)) {
+				ret = it;
+				found = true;
+			}
+
+			ve = read_keyver(idx);
+		} while ((vs & 1) || (vs != ve));
+
+		if (found) {
+			return ret;
+		}
+
+		hop_info &= ~(1U << i);
+	}
+
+	return NULL;
+}
+
+item* assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv) {
+	unsigned int start_index = hv & hashmask(hashpower);
+	uint32_t vs, ve;
+	item* ret = NULL;
+
+	do {
+		vs = read_keyver(start_index);
+
+		ret = find_item(&buckets[start_index], key, nkey);
+
+		ve = read_keyver(start_index);
+	} while ((vs & 1) || (vs != ve));
+
+	return ret;
 }
 
 void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t hv){

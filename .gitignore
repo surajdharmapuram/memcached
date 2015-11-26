@@ -12,6 +12,7 @@
 .*
 *.o
 *.o.*
+*.gcno
 *.a
 *.s
 *.ko
@@ -161,6 +162,12 @@ user/progs/nibbles
 user/progs/racer
 user/progs/thr_exit_join
 user/progs/test_change_seg
+
+memcached
+memcached-debug
+sizes
+timedrun
+testapp
 
 #
 # Top-level generic files
