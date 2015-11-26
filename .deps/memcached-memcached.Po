@@ -83,9 +83,10 @@ memcached-memcached.o: memcached.c memcached.h config.h \
   /usr/include/sys/_types/_seek_set.h /usr/include/sys/select.h \
   /usr/include/sys/_types/_uuid_t.h /usr/include/gethostuuid.h \
   protocol_binary.h cache.h sasl_defs.h stats.h slabs.h assoc.h items.h \
-  trace.h hash.h util.h assoc_hopscotch.h /usr/include/sys/stat.h \
-  /usr/include/sys/_types/_s_ifmt.h /usr/include/sys/_types/_filesec_t.h \
-  /usr/include/sys/un.h /usr/include/signal.h /usr/include/sys/signal.h \
+  trace.h hash.h util.h assoc_hopscotch.h debug.h \
+  /usr/include/sys/stat.h /usr/include/sys/_types/_s_ifmt.h \
+  /usr/include/sys/_types/_filesec_t.h /usr/include/sys/un.h \
+  /usr/include/signal.h /usr/include/sys/signal.h \
   /usr/include/machine/signal.h /usr/include/i386/signal.h \
   /usr/include/machine/_mcontext.h /usr/include/i386/_mcontext.h \
   /usr/include/mach/i386/_structs.h \
@@ -395,6 +396,8 @@ hash.h:
 util.h:
 
 assoc_hopscotch.h:
+
+debug.h:
 
 /usr/include/sys/stat.h:
 

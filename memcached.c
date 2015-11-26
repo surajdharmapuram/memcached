@@ -5089,7 +5089,7 @@ int main (int argc, char **argv) {
     bool start_lru_maintainer = false;
     bool start_lru_crawler = false;
     //TODO revert to JENKINS
-    enum hashfunc_type hash_type = JENKINS_HASH;
+    enum hashfunc_type hash_type = DEBUG_HASH;
     uint32_t tocrawl;
 
     char *subopts;
