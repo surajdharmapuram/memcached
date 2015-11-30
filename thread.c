@@ -593,7 +593,6 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
 
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
-    printf("next:%p prev:%p h_next:%p %d\n", item->prev, item->next, item->h_next, comm);
     ret = do_store_item(item, comm, c, hv);
     item_unlock(hv);
     return ret;

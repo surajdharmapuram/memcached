@@ -14,6 +14,7 @@
  *      Brad Fitzpatrick <brad@danga.com>
  */
 #include "memcached.h"
+#include "debug.h"
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -99,6 +100,10 @@ static void write_bin_error(conn *c, protocol_binary_response_status err,
                             const char *errstr, int swallow);
 
 static void conn_free(conn *c);
+
+/* Debug Stuff */
+int debug_level = 0;
+int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
 
 /** exported globals **/
 struct stats stats;
@@ -5081,8 +5086,8 @@ int main (int argc, char **argv) {
     bool protocol_specified = false;
     bool tcp_specified = false;
     bool udp_specified = false;
-    bool start_lru_maintainer = false;
-    bool start_lru_crawler = false;
+    //bool start_lru_maintainer = false;
+    //bool start_lru_crawler = false;
     //TODO revert to JENKINS
     enum hashfunc_type hash_type = JENKINS_HASH;
     uint32_t tocrawl;
@@ -5427,7 +5432,7 @@ int main (int argc, char **argv) {
                 }
                 break;
             case LRU_CRAWLER:
-                start_lru_crawler = true;
+                //start_lru_crawler = true;
                 break;
             case LRU_CRAWLER_SLEEP:
                 settings.lru_crawler_sleep = atoi(subopts_value);
@@ -5444,7 +5449,7 @@ int main (int argc, char **argv) {
                 settings.lru_crawler_tocrawl = tocrawl;
                 break;
             case LRU_MAINTAINER:
-                start_lru_maintainer = true;
+                //start_lru_maintainer = true;
                 break;
             case HOT_LRU_PCT:
                 if (subopts_value == NULL) {
@@ -5615,7 +5620,6 @@ int main (int argc, char **argv) {
 
     /* initialize other stuff */
     stats_init();
-    //TODO commented by Suraj.
    // assoc_init(settings.hashpower_init);
     assoc_hopscotch_init(settings.hashpower_init);
     conn_init();
@@ -5632,6 +5636,7 @@ int main (int argc, char **argv) {
     /* start up worker threads if MT mode */
     memcached_thread_init(settings.num_threads, main_base);
 
+#if 0
     if (start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
     }
@@ -5645,6 +5650,7 @@ int main (int argc, char **argv) {
         fprintf(stderr, "Failed to enable LRU maintainer thread\n");
         return 1;
     }
+#endif
 
     if (settings.slab_reassign &&
         start_slab_maintenance_thread() == -1) {
@@ -5730,7 +5736,7 @@ int main (int argc, char **argv) {
         retval = EXIT_FAILURE;
     }
 
-    stop_assoc_maintenance_thread();
+    //stop_assoc_maintenance_thread();
 
     /* remove the PID file if we're a daemon */
     if (do_daemonize)

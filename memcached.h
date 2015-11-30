@@ -362,7 +362,7 @@ typedef struct _stritem {
     struct _stritem *next;
     struct _stritem *prev;
     /* Rest are protected by an item lock */
-    struct _stritem *h_next;    /* hash chain next */
+    //struct _stritem *h_next;    /* hash chain next */
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
     int             nbytes;     /* size of data */
@@ -543,6 +543,9 @@ extern int daemonize(int nochdir, int noclose);
 
 #define mutex_lock(x) pthread_mutex_lock(x)
 #define mutex_unlock(x) pthread_mutex_unlock(x)
+
+extern unsigned int hashpower;
+extern unsigned int item_lock_hashpower;
 
 #include "stats.h"
 #include "slabs.h"

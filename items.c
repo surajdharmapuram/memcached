@@ -211,7 +211,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     //assert(it != heads[id]);
 
     /* Refcount is seeded to 1 by slabs_alloc() */
-    it->next = it->prev = it->h_next = 0;
+    //it->next = it->prev = it->h_next = 0;
+    it->next = it->prev = 0;
     /* Items are initially loaded into the HOT_LRU. This is '0' but I want at
      * least a note here. Compiler (hopefully?) optimizes this out.
      */
@@ -294,8 +295,8 @@ static void item_link_q(item *it) {
 }
 
 static void do_item_unlink_q(item *it) {
-	char* key = ITEM_key(it);
-	printf("Trying to unlink item %s", key);
+	//char* key = ITEM_key(it);
+	//printf("Trying to unlink item %s", key);
     item **head, **tail;
     assert(it->slabs_clsid < LARGEST_ID);
     head = &heads[it->slabs_clsid];
@@ -335,7 +336,7 @@ int do_item_link(item *it, const uint32_t hv) {
     stats.curr_items += 1;
     stats.total_items += 1;
     STATS_UNLOCK();
-    printf("Setting me %d\n", settings.use_cas);
+    //printf("Setting me %d\n", settings.use_cas);
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
     //assoc_insert(it, hv);

@@ -16,7 +16,7 @@ memcached_SOURCES = memcached.c memcached.h \
                     slabs.c slabs.h \
                     items.c items.h \
                     assoc_hopscotch.c assoc_hopscotch.h \
-                    assoc.c assoc.h \
+                    assoc.h \
                     thread.c daemon.c \
                     stats.c stats.h \
                     util.c util.h \

@@ -17,10 +17,10 @@
 #define ENDIAN_LITTLE 1
 
 /* Define to 1 if support accept4 */
-/* #undef HAVE_ACCEPT4 */
+#define HAVE_ACCEPT4 1
 
 /* Define to 1 if you have the `clock_gettime' function. */
-/* #undef HAVE_CLOCK_GETTIME */
+#define HAVE_CLOCK_GETTIME 1
 
 /* Define this if you have an implementation of drop_privileges() */
 /* #undef HAVE_DROP_PRIVILEGES */
@@ -32,7 +32,7 @@
 /* #undef HAVE_GETPAGESIZES */
 
 /* Have ntohll */
-#define HAVE_HTONLL 1
+/* #undef HAVE_HTONLL */
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
@@ -47,13 +47,13 @@
 #define HAVE_MLOCKALL 1
 
 /* we have sasl_callback_ft */
-#define HAVE_SASL_CALLBACK_FT 1
+/* #undef HAVE_SASL_CALLBACK_FT */
 
 /* Set to nonzero if your SASL implementation supports SASL_CB_GETCONF */
 /* #undef HAVE_SASL_CB_GETCONF */
 
 /* Define to 1 if you have the <sasl/sasl.h> header file. */
-#define HAVE_SASL_SASL_H 1
+/* #undef HAVE_SASL_SASL_H */
 
 /* Define to 1 if you have the `setppriv' function. */
 /* #undef HAVE_SETPPRIV */
@@ -93,6 +93,9 @@
 
 /* Machine need alignment */
 /* #undef NEED_ALIGN */
+
+/* Define to 1 if your C compiler doesn't accept -c and -o together. */
+/* #undef NO_MINUS_C_MINUS_O */
 
 /* Name of package */
 #define PACKAGE "memcached"

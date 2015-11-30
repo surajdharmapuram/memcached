@@ -6,10 +6,8 @@
  */
 
 #include "memcached.h"
-#include "assoc_hopscotch.h"
-
+#include "debug.h"
 #include <stdlib.h>
-
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/signal.h>
@@ -26,14 +24,14 @@
 typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
 typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
+/* how many powers of 2's worth of buckets we use */
+unsigned int hashpower = HASHPOWER_DEFAULT;
 #define hashsize(n) ((ub4)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 
 // unsigned int hashpower = HASHPOWER_DEFAULT;
 
-#define NEIGHBORHOOD 4
-
-static pthread_mutex_t hash_items_counter_lock = PTHREAD_MUTEX_INITIALIZER;
+#define NEIGHBORHOOD 32
 
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
@@ -41,7 +39,7 @@ static unsigned int hash_items = 0;
 struct _Bucket {
 	BitmapType bitmap; // neighborhood info bitmap
 	item* it; // item details
-	bool full; // is the bucket full
+	//bool full; // is the bucket full
 } __attribute__((__packed__));
 
 typedef struct _Bucket Bucket;
@@ -49,7 +47,7 @@ typedef struct _Bucket Bucket;
 static Bucket* buckets;
 
 void assoc_hopscotch_init(const int hashtable_init) {
-	printf("Entered init");
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered init with value %d\n", hashtable_init);
 	hashpower = HASHPOWER_DEFAULT;
 	if (hashtable_init) {
 		hashpower = hashtable_init;
@@ -61,7 +59,7 @@ void assoc_hopscotch_init(const int hashtable_init) {
 		exit(EXIT_FAILURE);
 	}
 
-	printf("Created %lu buckets\n", hashsize(hashpower));
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Created %lu buckets\n", hashsize(hashpower));
 
 	STATS_LOCK();
 	stats.hash_power_level = hashpower;
@@ -77,7 +75,7 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 		BitmapType bitmap = move_bucket->bitmap;
 		int move_new_free_distance = -1;
 		BitmapType mask = 1;
-		printf("The bitmap for bucket %ld is %u\n", move_bucket - buckets, bitmap);
+		//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "The bitmap for bucket %ld is %u\n", move_bucket - buckets, bitmap);
 		int i;
 		for (i=0; i<move_free_dist; ++i, mask <<= 1) {
 			if (mask & bitmap) {
@@ -89,10 +87,10 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 		if (-1 != move_new_free_distance) {
 			// TODO: check why this "if" is there, probably because of concurrency
 			if (bitmap == move_bucket->bitmap) {
-				printf("Inside here\n");
+				//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside here\n");
 				Bucket* new_free_bucket = move_bucket + move_new_free_distance;
 				(*free_bucket)->it = new_free_bucket->it;
-				(*free_bucket)->full = true;
+				//(*free_bucket)->full = true;
 
 				move_bucket->bitmap |= (1U << move_free_dist);
 				move_bucket->bitmap &= ~(1U << move_new_free_distance);
@@ -112,7 +110,7 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
 int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 
-	printf("Entered insert\n");
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered insert\n");
 	const unsigned int num_buckets = hashsize(hashpower);
 
 	// TODO: look at the expansion code
@@ -122,37 +120,39 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 	// linear probe for the first free slot
 	// TODO: find out what HASH_EMPTY etc are
 	// TODO: INSERT_RANGE, end of page etc
-	printf("Before loop start index %d\n", start_index);
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Before loop start index %d\n", start_index);
 
 	for (; start_index + free_distance < num_buckets; ++free_distance) {
 		// found an empty bucket
-		if (!buckets[start_index  + free_distance].full) { printf("Found free bucket\n"); break; }
+#if 0
+		if (!buckets[start_index  + free_distance].full) { //DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Found free bucket\n"); 
+								   break; }
+#endif
+		if (buckets[start_index + free_distance].it == NULL)
+			break;
 	}
 
-	printf("Hashed to %d at free distance %d, starting at %d at address %p ", hv, free_distance, start_index, it);
-	fflush(stdout);
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Hashed to %d at free distance %d, starting at %d at address %p ", hv, free_distance, start_index, (void *)it);
+	//fflush(stdout);
 
 	Bucket* current_bucket = &buckets[start_index + free_distance];
-	// TODO: why do we need a loop here?
 	do {
 		if (free_distance < NEIGHBORHOOD) {
-			printf("Inside break condition %d\n", free_distance);
+			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside break condition %d\n", free_distance);
 			current_bucket->it = it;
-			current_bucket->full = true;
+			//current_bucket->full = true;
 			buckets[start_index].bitmap |= (1U << free_distance);
 			break;
 		}
 		find_closer_free_bucket(&current_bucket, &free_distance);
-		printf("Found a free backet at index %ld freedistance %d\n", (current_bucket - buckets), free_distance);
+		//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Found a free backet at index %ld freedistance %d\n", (current_bucket - buckets), free_distance);
 	} while (current_bucket != 0);
 
 	if(current_bucket == 0)
 		return 0;
 
-	pthread_mutex_lock(&hash_items_counter_lock);
 	hash_items++;
 	// TODO: look at expanding code
-	pthread_mutex_unlock(&hash_items_counter_lock);
 
 	MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey, hash_items);
 
@@ -164,12 +164,12 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 	register unsigned int start_bucket = hv & hashmask(hashpower);
 	BitmapType hop_info = buckets[start_bucket].bitmap;
 	item* it = buckets[start_bucket].it;
-	printf("HopInfo for hv %u is %u\n", hv, hop_info);
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo for hv %u is %u\n", hv, hop_info);
 
 	if(hop_info == 0U)
 		return NULL;
 	else if(1U == hop_info){
-		printf("HopInfo is equal to 1\n");
+		//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo is equal to 1\n");
 		if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0))
 			return it;
 		else
@@ -190,7 +190,7 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 
 void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t hv){
 
-	printf("Entered hopscotch delete\n");
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered hopscotch delete\n");
 	register unsigned int start_bucket = hv & hashmask(hashpower);
 	BitmapType hop_info = buckets[start_bucket].bitmap;
 	item* it = buckets[start_bucket].it;
@@ -201,9 +201,9 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 	else if (hop_info == 1U) {
 		if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)){
 			buckets[start_bucket].it = NULL;
-			buckets[start_bucket].full = false;
+			//buckets[start_bucket].full = false;
 			buckets[start_bucket].bitmap = 0U;
-			printf("Deleted from index %d\n", start_bucket);
+			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket);
 			return;
 		}
 	}
@@ -215,9 +215,9 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 			BitmapType mask = 1;
 			mask <<= i;
 			buckets[start_bucket].bitmap &= ~(mask);
-			printf("Deleted from index %d\n", start_bucket + i);
+			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket + i);
 			buckets[start_bucket + i].it = NULL;
-			buckets[start_bucket + i].full = false;
+			//buckets[start_bucket + i].full = false;
 			return;
 		}
 		hop_info &= ~(1U << i);
