@@ -103,7 +103,8 @@ static void conn_free(conn *c);
 
 /* Debug Stuff */
 int debug_level = 0;
-int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
+// int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
+int debug_flags = 0; // TODO: changed by ud
 
 /** exported globals **/
 struct stats stats;

@@ -29,7 +29,7 @@ typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
 // unsigned int hashpower = HASHPOWER_DEFAULT;
 
-#define NEIGHBORHOOD 4
+#define NEIGHBORHOOD 32
 
 // unnecessary, since we're assume single writer
 // static pthread_mutex_t hash_items_counter_lock = PTHREAD_MUTEX_INITIALIZER;
