@@ -19,7 +19,7 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc);
 unsigned int slabs_clsid(const size_t size);
 
 /** Allocate object of given length. 0 on error */ /*@null@*/
-void *slabs_alloc(const size_t size, unsigned int id, unsigned int *total_chunks);
+void *slabs_alloc(const size_t size, unsigned int id);
 
 /** Free previously allocated object */
 void slabs_free(void *ptr, size_t size, unsigned int id);
@@ -48,5 +48,10 @@ enum reassign_result_type slabs_reassign(int src, int dst);
 
 void slabs_rebalancer_pause(void);
 void slabs_rebalancer_resume(void);
+
+#ifdef HOPSCOTCH_CLOCK
+item* slabs_cache_evict(unsigned int id);
+void slabs_cache_update(item *it);
+#endif
 
 #endif

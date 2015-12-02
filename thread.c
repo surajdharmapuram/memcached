@@ -36,8 +36,8 @@ struct conn_queue {
     pthread_mutex_t lock;
 };
 
-/* Locks for cache LRU operations */
-pthread_mutex_t lru_locks[POWER_LARGEST];
+/* Lock for cache operations (item_*, assoc_*) */
+pthread_mutex_t cache_lock;
 
 /* Connection lock around accepting new connections */
 pthread_mutex_t conn_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -164,16 +164,16 @@ void pause_threads(enum pause_thread_types type) {
     switch (type) {
         case PAUSE_ALL_THREADS:
             slabs_rebalancer_pause();
-            lru_crawler_pause();
-            lru_maintainer_pause();
+            //lru_crawler_pause();
+            //lru_maintainer_pause();
         case PAUSE_WORKER_THREADS:
             buf[0] = 'p';
             pthread_mutex_lock(&worker_hang_lock);
             break;
         case RESUME_ALL_THREADS:
             slabs_rebalancer_resume();
-            lru_crawler_resume();
-            lru_maintainer_resume();
+            //lru_crawler_resume();
+            //lru_maintainer_resume();
         case RESUME_WORKER_THREADS:
             pthread_mutex_unlock(&worker_hang_lock);
             break;
@@ -480,7 +480,7 @@ int is_listen_thread() {
 item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbytes) {
     item *it;
     /* do_item_alloc handles its own locks */
-    it = do_item_alloc(key, nkey, flags, exptime, nbytes, 0);
+    it = do_item_alloc(key, nkey, flags, exptime, nbytes);
     return it;
 }
 
@@ -725,9 +725,7 @@ void memcached_thread_init(int nthreads, struct event_base *main_base) {
     int         i;
     int         power;
 
-    for (i = 0; i < POWER_LARGEST; i++) {
-        pthread_mutex_init(&lru_locks[i], NULL);
-    }
+    pthread_mutex_init(&cache_lock, NULL);
     pthread_mutex_init(&worker_hang_lock, NULL);
 
     pthread_mutex_init(&init_lock, NULL);
@@ -800,5 +798,44 @@ void memcached_thread_init(int nthreads, struct event_base *main_base) {
     pthread_mutex_lock(&init_lock);
     wait_for_thread_registration(nthreads);
     pthread_mutex_unlock(&init_lock);
+}
+
+/*
+ * Flushes expired items after a flush_all call
+ */
+void item_flush_expired() {
+    mutex_lock(&cache_lock);
+    do_item_flush_expired();
+    pthread_mutex_unlock(&cache_lock);
+}
+
+/*
+ * Dumps part of the cache
+ */
+char *item_cachedump(unsigned int slabs_clsid, unsigned int limit, unsigned int *bytes) {
+    char *ret;
+
+    mutex_lock(&cache_lock);
+    ret = do_item_cachedump(slabs_clsid, limit, bytes);
+    pthread_mutex_unlock(&cache_lock);
+    return ret;
+}
+
+/*
+ * Dumps statistics about slab classes
+ */
+void  item_stats(ADD_STAT add_stats, void *c) {
+    mutex_lock(&cache_lock);
+    do_item_stats(add_stats, c);
+    pthread_mutex_unlock(&cache_lock);
+}
+
+/*
+ * Dumps a list of objects of each size in 32-byte increments
+ */
+void  item_stats_sizes(ADD_STAT add_stats, void *c) {
+    mutex_lock(&cache_lock);
+    do_item_stats_sizes(add_stats, c);
+    pthread_mutex_unlock(&cache_lock);
 }
 

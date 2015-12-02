@@ -23,6 +23,8 @@
 
 #include "sasl_defs.h"
 
+#define HOPSCOTCH_CLOCK		1
+
 /** Maximum length of a key. */
 #define KEY_MAX_LENGTH 250
 
@@ -398,6 +400,20 @@ typedef struct {
     uint32_t        remaining;  /* Max keys to crawl per slab per invocation */
 } crawler;
 
+#ifdef HOPSCOTCH_CLOCK
+typedef struct _slabbed_item {
+    rel_time_t      time;       /* least recent access */
+    rel_time_t      exptime;    /* expire time */
+    int             nbytes;     /* size of data */
+    uint8_t         nsuffix;    /* length of flags-and-length string */
+    uint8_t         it_flags;   /* ITEM_* above */
+    uint8_t         slabs_clsid;/* which slab class we're in */
+    uint8_t         nkey;       /* key length, w/terminating null and padding */
+    struct _slabbed_item *next;
+    struct _slabbed_item *prev;
+} slabbed_item;
+#endif
+
 typedef struct {
     pthread_t thread_id;        /* unique ID of this thread */
     struct event_base *base;    /* libevent handle this thread uses */
@@ -597,6 +613,7 @@ void STATS_UNLOCK(void);
 void threadlocal_stats_reset(void);
 void threadlocal_stats_aggregate(struct thread_stats *stats);
 void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out);
+void item_flush_expired(void );
 
 /* Stat processing functions */
 void append_stat(const char *name, ADD_STAT add_stats, conn *c,

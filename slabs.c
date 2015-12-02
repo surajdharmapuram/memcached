@@ -37,6 +37,12 @@ typedef struct {
 
     unsigned int killing;  /* index+1 of dying slab, or zero if none */
     size_t requested; /* The number of requested bytes */
+#ifdef HOPSCOTCH_CLOCK
+	void *bitmap;
+	unsigned int bitmap_len;
+	unsigned int clock;
+	unsigned int clock_max;
+#endif
 } slabclass_t;
 
 static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
@@ -180,7 +186,16 @@ static int grow_slab_list (const unsigned int id) {
     if (p->slabs == p->list_size) {
         size_t new_size =  (p->list_size != 0) ? p->list_size * 2 : 16;
         void *new_list = realloc(p->slab_list, new_size * sizeof(void *));
-        if (new_list == 0) return 0;
+        if (new_list == 0)
+			return 0;
+#ifdef HOPSCOTCH_CLOCK
+		size_t new_bitmap_len = (new_size * p->perslab + 7) / 8;
+		void *new_bitmap = realloc(p->bitmap, new_bitmap_len);
+		if (new_bitmap == 0)
+			return 0;
+		p->bitmap_len = new_bitmap_len;
+		p->bitmap = new_bitmap;
+#endif
         p->list_size = new_size;
         p->slab_list = new_list;
     }
@@ -216,9 +231,13 @@ static int do_slabs_newslab(const unsigned int id) {
     }
 
     memset(ptr, 0, (size_t)len);
-    split_slab_page_into_freelist(ptr, id);
+	// TODO: Should this be commented?
+    //split_slab_page_into_freelist(ptr, id);
 
     p->slab_list[p->slabs++] = ptr;
+#ifdef HOPSCOTCH_CLOCK
+	p->clock_max = p->slabs * p->perslab;
+#endif
     mem_malloced += len;
     MEMCACHED_SLABS_SLABCLASS_ALLOCATE(id);
 
@@ -226,10 +245,9 @@ static int do_slabs_newslab(const unsigned int id) {
 }
 
 /*@null@*/
-static void *do_slabs_alloc(const size_t size, unsigned int id, unsigned int *total_chunks) {
+static void *do_slabs_alloc(const size_t size, unsigned int id) {
     slabclass_t *p;
     void *ret = NULL;
-    item *it = NULL;
 
     if (id < POWER_SMALLEST || id > power_largest) {
         MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
@@ -238,7 +256,6 @@ static void *do_slabs_alloc(const size_t size, unsigned int id, unsigned int *to
     p = &slabclass[id];
     assert(p->sl_curr == 0 || ((item *)p->slots)->slabs_clsid == 0);
 
-    *total_chunks = p->slabs * p->perslab;
     /* fail unless we have space at the end of a recently allocated page,
        we have something on our freelist, or we could allocate a new page */
     if (! (p->sl_curr != 0 || do_slabs_newslab(id) != 0)) {
@@ -246,15 +263,23 @@ static void *do_slabs_alloc(const size_t size, unsigned int id, unsigned int *to
         ret = NULL;
     } else if (p->sl_curr != 0) {
         /* return off our freelist */
-        it = (item *)p->slots;
+#ifdef HOPSCOTCH_CLOCK
+		slabbed_item* sl_it = (slabbed_item *)p->slots;
+		p->slots = sl_it->next;
+		if (sl_it->next) sl_it->next->prev = 0;
+		__sync_fetch_and_and(&sl_it->it_flags, ~ITEM_SLABBED);
+		ret = (void *)sl_it;
+#else
+        item *it = (item *)p->slots;
         p->slots = it->next;
         if (it->next) it->next->prev = 0;
         /* Kill flag and initialize refcount here for lock safety in slab
          * mover's freeness detection. */
         it->it_flags &= ~ITEM_SLABBED;
         it->refcount = 1;
-        p->sl_curr--;
         ret = (void *)it;
+#endif
+        p->sl_curr--;
     }
 
     if (ret) {
@@ -269,7 +294,6 @@ static void *do_slabs_alloc(const size_t size, unsigned int id, unsigned int *to
 
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     slabclass_t *p;
-    item *it;
 
     assert(id >= POWER_SMALLEST && id <= power_largest);
     if (id < POWER_SMALLEST || id > power_largest)
@@ -278,49 +302,42 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     MEMCACHED_SLABS_FREE(size, id, ptr);
     p = &slabclass[id];
 
-    it = (item *)ptr;
+#ifdef HOPSCOTCH_CLOCK
+	slabbed_item *sl_it = (slabbed_item *)ptr;
+	__sync_fetch_and_or(&sl_it->it_flags, ITEM_SLABBED);
+	// TODO: This is not done in memc3
+	sl_it->slabs_clsid = 0;
+	sl_it->prev = 0;
+	sl_it->next = p->slots;
+	if (sl_it->next)
+		sl_it->next->prev = sl_it;
+	p->slots = sl_it;
+#else
+    item *it = (item *)ptr;
     it->it_flags |= ITEM_SLABBED;
     it->slabs_clsid = 0;
     it->prev = 0;
     it->next = p->slots;
     if (it->next) it->next->prev = it;
     p->slots = it;
+#endif
 
     p->sl_curr++;
     p->requested -= size;
     return;
 }
 
+#if 0
 static int nz_strcmp(int nzlength, const char *nz, const char *z) {
     int zlength=strlen(z);
     return (zlength == nzlength) && (strncmp(nz, z, zlength) == 0) ? 0 : -1;
 }
+#endif
 
 bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c) {
     bool ret = true;
 
-    if (add_stats != NULL) {
-        if (!stat_type) {
-            /* prepare general statistics for the engine */
-            STATS_LOCK();
-            APPEND_STAT("bytes", "%llu", (unsigned long long)stats.curr_bytes);
-            APPEND_STAT("curr_items", "%u", stats.curr_items);
-            APPEND_STAT("total_items", "%u", stats.total_items);
-            STATS_UNLOCK();
-            item_stats_totals(add_stats, c);
-        } else if (nz_strcmp(nkey, stat_type, "items") == 0) {
-            item_stats(add_stats, c);
-        } else if (nz_strcmp(nkey, stat_type, "slabs") == 0) {
-            slabs_stats(add_stats, c);
-        } else if (nz_strcmp(nkey, stat_type, "sizes") == 0) {
-            item_stats_sizes(add_stats, c);
-        } else {
-            ret = false;
-        }
-    } else {
-        ret = false;
-    }
-
+    // removed by Bin
     return ret;
 }
 
@@ -410,11 +427,11 @@ static void *memory_allocate(size_t size) {
     return ret;
 }
 
-void *slabs_alloc(size_t size, unsigned int id, unsigned int *total_chunks) {
+void *slabs_alloc(size_t size, unsigned int id) {
     void *ret;
 
     pthread_mutex_lock(&slabs_lock);
-    ret = do_slabs_alloc(size, id, total_chunks);
+    ret = do_slabs_alloc(size, id);
     pthread_mutex_unlock(&slabs_lock);
     return ret;
 }
@@ -937,3 +954,138 @@ void stop_slab_maintenance_thread(void) {
     pthread_join(maintenance_tid, NULL);
     pthread_join(rebalance_tid, NULL);
 }
+
+#ifdef HOPSCOTCH_CLOCK
+static __attribute__((unused)) short firstzero[256] =                   \
+                              {0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,\
+                               0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 8};
+
+static inline uint8_t bv_getbit(void *bv, uint32_t index) {
+	char* bitmap = (char*) bv; 
+	uint32_t byte_index = index >> 3;
+	char  byte_mask  =  1 << (index & 7); 
+	return bitmap[byte_index] & byte_mask;
+}
+
+static inline void bv_setbit(void *bv, uint32_t index, uint8_t v) {
+	char* bitmap = (char*) bv; 
+	uint32_t byte_index = index >> 3;
+	char  byte_mask  =  (v & 1) << (index & 7); 
+	bitmap[byte_index] &= ~byte_mask;
+	bitmap[byte_index] |= byte_mask;
+}
+
+item *slabs_cache_evict(unsigned int id)
+{
+	size_t max_steps = 10, index, offset, steps;
+	bool foundzero = false;
+	uint64_t *val64;
+	uint32_t *val32;
+	uint16_t *val16;
+	uint8_t *val8;
+	item *ret_item;
+
+	slabclass_t *p;
+	p = &slabclass[id];
+
+	// slow search until we reach the end of a byte
+	assert(p->clock < p->clock_max);
+
+	while ((p->clock & 0x7) != 0) {
+		if (bv_getbit(p->bitmap, p->clock) == 1) {
+			bv_setbit(p->bitmap, p->clock, 0);
+		} else {
+			bv_setbit(p->bitmap, p->clock, 1);
+			foundzero = 0;
+			break;
+		}
+
+		p->clock++;
+		if (p->clock >= p->clock_max)
+			break;
+	}
+
+	if (!foundzero) {
+		if (p->clock + 64 >= p->clock_max)
+			p->clock = 0;
+		val64 = (uint64_t *)((char *)(p->bitmap) + p->clock / 8);
+
+		for (steps = 0; steps < max_steps; steps++) {
+			if (*val64 == (uint64_t)-1) {
+				*val64 = 0;
+				val64++;
+				p->clock += 64;
+				if (p->clock + 64 >= p->clock_max)
+					p->clock = 0;
+			} else {
+				val32 = (uint32_t *)val64;
+				if (*val32 == (uint32_t)-1) {
+					*val32 = 0;
+					val32++;
+					p->clock += 32;
+				}
+				val16 = (uint16_t *)val32;
+				if (*val16 == (uint16_t)-1) {
+					*val16 = 0;
+					val16++;
+					p->clock += 16;
+				}
+				val8 = (uint8_t *)val16;
+				if (*val8 == (uint8_t)-1) {
+					*val8 = 0;
+					val8++;
+					p->clock += 8;
+				}
+
+				p->clock += firstzero[*val8];
+				bv_setbit(p->bitmap, p->clock, 1);
+				break;
+			}
+		}
+	}
+
+	p->clock = (p->clock > p->clock_max) ? 0 : p->clock;
+	bv_setbit(p->bitmap, p->clock, 1);
+
+	assert(p->clock < p->clock_max);
+
+	index = p->clock / p->perslab;
+	offset = p->clock % p->perslab;
+	p->clock++;
+
+	ret_item = (item *)((char *)(p->slab_list[index]) + p->size * offset);
+
+	return ret_item;
+}
+
+void slabs_cache_update(item *it)
+{
+	slabclass_t *p;
+	unsigned int id;
+	size_t pos;
+
+	id = it->slabs_clsid;
+	if (id > POWER_SMALLEST && id < power_largest) {
+		p = &slabclass[id];
+		pos = ((char *)it - (char *)mem_base) / p->size;
+		assert(pos < p->clock_max);
+		bv_setbit(p->bitmap, pos, 1);
+	}
+}
+
+//void print_slab_clock()
+#endif

@@ -185,11 +185,8 @@ static void stats_init(void) {
     stats.hash_power_level = stats.hash_bytes = stats.hash_is_expanding = 0;
     stats.expired_unfetched = stats.evicted_unfetched = 0;
     stats.slabs_moved = 0;
-    stats.lru_maintainer_juggles = 0;
     stats.accepting_conns = true; /* assuming we start in this state. */
     stats.slab_reassign_running = false;
-    stats.lru_crawler_running = false;
-    stats.lru_crawler_starts = 0;
 
     /* make the time we started always be 2 seconds before we really
        did, so time(0) - time.started is never zero.  if so, things
@@ -238,20 +235,12 @@ static void settings_init(void) {
     settings.binding_protocol = negotiating_prot;
     settings.item_size_max = 1024 * 1024; /* The famous 1MB upper limit. */
     settings.maxconns_fast = false;
-    settings.lru_crawler = false;
-    settings.lru_crawler_sleep = 100;
-    settings.lru_crawler_tocrawl = 0;
-    settings.lru_maintainer_thread = false;
-    settings.hot_lru_pct = 32;
-    settings.warm_lru_pct = 32;
-    settings.expirezero_does_not_evict = false;
     settings.hashpower_init = 0;
     settings.slab_reassign = false;
     settings.slab_automove = 0;
     settings.shutdown_command = false;
     settings.tail_repair_time = TAIL_REPAIR_TIME_DEFAULT;
     settings.flush_enabled = true;
-    settings.crawls_persleep = 1000;
 }
 
 /*
@@ -2373,7 +2362,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
                 flags = (int) strtol(ITEM_suffix(old_it), (char **) NULL, 10);
 
-                new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */, hv);
+                new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
 
                 if (new_it == NULL) {
                     /* SERVER_ERROR out of memory */
@@ -2639,15 +2628,6 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
         APPEND_STAT("slab_reassign_running", "%u", stats.slab_reassign_running);
         APPEND_STAT("slabs_moved", "%llu", stats.slabs_moved);
     }
-    if (settings.lru_crawler) {
-        APPEND_STAT("lru_crawler_running", "%u", stats.lru_crawler_running);
-        APPEND_STAT("lru_crawler_starts", "%u", stats.lru_crawler_starts);
-    }
-    if (settings.lru_maintainer_thread) {
-        APPEND_STAT("lru_maintainer_juggles", "%llu", (unsigned long long)stats.lru_maintainer_juggles);
-    }
-    APPEND_STAT("malloc_fails", "%llu",
-                (unsigned long long)stats.malloc_fails);
     STATS_UNLOCK();
 }
 
@@ -2682,9 +2662,6 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
     APPEND_STAT("hashpower_init", "%d", settings.hashpower_init);
     APPEND_STAT("slab_reassign", "%s", settings.slab_reassign ? "yes" : "no");
     APPEND_STAT("slab_automove", "%d", settings.slab_automove);
-    APPEND_STAT("lru_crawler", "%s", settings.lru_crawler ? "yes" : "no");
-    APPEND_STAT("lru_crawler_sleep", "%d", settings.lru_crawler_sleep);
-    APPEND_STAT("lru_crawler_tocrawl", "%lu", (unsigned long)settings.lru_crawler_tocrawl);
     APPEND_STAT("tail_repair_time", "%d", settings.tail_repair_time);
     APPEND_STAT("flush_enabled", "%s", settings.flush_enabled ? "yes" : "no");
     APPEND_STAT("hash_algorithm", "%s", settings.hash_algorithm);
@@ -3312,7 +3289,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         do_item_update(it);
     } else if (it->refcount > 1) {
         item *new_it;
-        new_it = do_item_alloc(ITEM_key(it), it->nkey, atoi(ITEM_suffix(it) + 1), it->exptime, res + 2, hv);
+        new_it = do_item_alloc(ITEM_key(it), it->nkey, atoi(ITEM_suffix(it) + 1), it->exptime, res + 2);
         if (new_it == 0) {
             do_item_remove(it);
             return EOM;
@@ -3599,72 +3576,6 @@ static void process_command(conn *c, char *command) {
         } else if (ntokens == 4 &&
             (strcmp(tokens[COMMAND_TOKEN + 1].value, "automove") == 0)) {
             process_slabs_automove_command(c, tokens, ntokens);
-        } else {
-            out_string(c, "ERROR");
-        }
-    } else if (ntokens > 1 && strcmp(tokens[COMMAND_TOKEN].value, "lru_crawler") == 0) {
-        if (ntokens == 4 && strcmp(tokens[COMMAND_TOKEN + 1].value, "crawl") == 0) {
-            int rv;
-            if (settings.lru_crawler == false) {
-                out_string(c, "CLIENT_ERROR lru crawler disabled");
-                return;
-            }
-
-            rv = lru_crawler_crawl(tokens[2].value);
-            switch(rv) {
-            case CRAWLER_OK:
-                out_string(c, "OK");
-                break;
-            case CRAWLER_RUNNING:
-                out_string(c, "BUSY currently processing crawler request");
-                break;
-            case CRAWLER_BADCLASS:
-                out_string(c, "BADCLASS invalid class id");
-                break;
-            case CRAWLER_NOTSTARTED:
-                out_string(c, "NOTSTARTED no items to crawl");
-                break;
-            }
-            return;
-        } else if (ntokens == 4 && strcmp(tokens[COMMAND_TOKEN + 1].value, "tocrawl") == 0) {
-            uint32_t tocrawl;
-             if (!safe_strtoul(tokens[2].value, &tocrawl)) {
-                out_string(c, "CLIENT_ERROR bad command line format");
-                return;
-            }
-            settings.lru_crawler_tocrawl = tocrawl;
-            out_string(c, "OK");
-            return;
-        } else if (ntokens == 4 && strcmp(tokens[COMMAND_TOKEN + 1].value, "sleep") == 0) {
-            uint32_t tosleep;
-            if (!safe_strtoul(tokens[2].value, &tosleep)) {
-                out_string(c, "CLIENT_ERROR bad command line format");
-                return;
-            }
-            if (tosleep > 1000000) {
-                out_string(c, "CLIENT_ERROR sleep must be one second or less");
-                return;
-            }
-            settings.lru_crawler_sleep = tosleep;
-            out_string(c, "OK");
-            return;
-        } else if (ntokens == 3) {
-            if ((strcmp(tokens[COMMAND_TOKEN + 1].value, "enable") == 0)) {
-                if (start_item_crawler_thread() == 0) {
-                    out_string(c, "OK");
-                } else {
-                    out_string(c, "ERROR failed to start lru crawler thread");
-                }
-            } else if ((strcmp(tokens[COMMAND_TOKEN + 1].value, "disable") == 0)) {
-                if (stop_item_crawler_thread() == 0) {
-                    out_string(c, "OK");
-                } else {
-                    out_string(c, "ERROR failed to stop lru crawler thread");
-                }
-            } else {
-                out_string(c, "ERROR");
-            }
-            return;
         } else {
             out_string(c, "ERROR");
         }
@@ -4846,16 +4757,6 @@ static void usage(void) {
            "                Disabled by default; dangerous option.\n"
            "              - hash_algorithm: The hash table algorithm\n"
            "                default is jenkins hash. options: jenkins, murmur3\n"
-           "              - lru_crawler: Enable LRU Crawler background thread\n"
-           "              - lru_crawler_sleep: Microseconds to sleep between items\n"
-           "                default is 100.\n"
-           "              - lru_crawler_tocrawl: Max items to crawl per slab per run\n"
-           "                default is 0 (unlimited)\n"
-           "              - lru_maintainer: Enable new LRU system + background thread\n"
-           "              - hot_lru_pct: Pct of slab memory to reserve for hot lru.\n"
-           "                (requires lru_maintainer)\n"
-           "              - warm_lru_pct: Pct of slab memory to reserve for warm lru.\n"
-           "                (requires lru_maintainer)\n"
            "              - expirezero_does_not_evict: Items set to not expire, will not evict.\n"
            "                (requires lru_maintainer)\n"
            );
@@ -5086,11 +4987,8 @@ int main (int argc, char **argv) {
     bool protocol_specified = false;
     bool tcp_specified = false;
     bool udp_specified = false;
-    //bool start_lru_maintainer = false;
-    //bool start_lru_crawler = false;
     //TODO revert to JENKINS
     enum hashfunc_type hash_type = JENKINS_HASH;
-    uint32_t tocrawl;
 
     char *subopts;
     char *subopts_value;
@@ -5101,12 +4999,6 @@ int main (int argc, char **argv) {
         SLAB_AUTOMOVE,
         TAIL_REPAIR_TIME,
         HASH_ALGORITHM,
-        LRU_CRAWLER,
-        LRU_CRAWLER_SLEEP,
-        LRU_CRAWLER_TOCRAWL,
-        LRU_MAINTAINER,
-        HOT_LRU_PCT,
-        WARM_LRU_PCT,
         NOEXP_NOEVICT
     };
     char *const subopts_tokens[] = {
@@ -5116,12 +5008,6 @@ int main (int argc, char **argv) {
         [SLAB_AUTOMOVE] = "slab_automove",
         [TAIL_REPAIR_TIME] = "tail_repair_time",
         [HASH_ALGORITHM] = "hash_algorithm",
-        [LRU_CRAWLER] = "lru_crawler",
-        [LRU_CRAWLER_SLEEP] = "lru_crawler_sleep",
-        [LRU_CRAWLER_TOCRAWL] = "lru_crawler_tocrawl",
-        [LRU_MAINTAINER] = "lru_maintainer",
-        [HOT_LRU_PCT] = "hot_lru_pct",
-        [WARM_LRU_PCT] = "warm_lru_pct",
         [NOEXP_NOEVICT] = "expirezero_does_not_evict",
         NULL
     };
@@ -5136,10 +5022,6 @@ int main (int argc, char **argv) {
 
     /* init settings */
     settings_init();
-
-    /* Run regardless of initializing it later */
-    init_lru_crawler();
-    init_lru_maintainer();
 
     /* set stderr non-buffering (for running under, say, daemontools) */
     setbuf(stderr, NULL);
@@ -5431,48 +5313,6 @@ int main (int argc, char **argv) {
                     return 1;
                 }
                 break;
-            case LRU_CRAWLER:
-                //start_lru_crawler = true;
-                break;
-            case LRU_CRAWLER_SLEEP:
-                settings.lru_crawler_sleep = atoi(subopts_value);
-                if (settings.lru_crawler_sleep > 1000000 || settings.lru_crawler_sleep < 0) {
-                    fprintf(stderr, "LRU crawler sleep must be between 0 and 1 second\n");
-                    return 1;
-                }
-                break;
-            case LRU_CRAWLER_TOCRAWL:
-                if (!safe_strtoul(subopts_value, &tocrawl)) {
-                    fprintf(stderr, "lru_crawler_tocrawl takes a numeric 32bit value\n");
-                    return 1;
-                }
-                settings.lru_crawler_tocrawl = tocrawl;
-                break;
-            case LRU_MAINTAINER:
-                //start_lru_maintainer = true;
-                break;
-            case HOT_LRU_PCT:
-                if (subopts_value == NULL) {
-                    fprintf(stderr, "Missing hot_lru_pct argument\n");
-                    return 1;
-                };
-                settings.hot_lru_pct = atoi(subopts_value);
-                if (settings.hot_lru_pct < 1 || settings.hot_lru_pct >= 80) {
-                    fprintf(stderr, "hot_lru_pct must be > 1 and < 80\n");
-                    return 1;
-                }
-                break;
-            case WARM_LRU_PCT:
-                if (subopts_value == NULL) {
-                    fprintf(stderr, "Missing warm_lru_pct argument\n");
-                    return 1;
-                };
-                settings.warm_lru_pct = atoi(subopts_value);
-                if (settings.warm_lru_pct < 1 || settings.warm_lru_pct >= 80) {
-                    fprintf(stderr, "warm_lru_pct must be > 1 and < 80\n");
-                    return 1;
-                }
-                break;
             case NOEXP_NOEVICT:
                 settings.expirezero_does_not_evict = true;
                 break;
@@ -5487,11 +5327,6 @@ int main (int argc, char **argv) {
             fprintf(stderr, "Illegal argument \"%c\"\n", c);
             return 1;
         }
-    }
-
-    if (settings.lru_maintainer_thread && settings.hot_lru_pct + settings.warm_lru_pct > 80) {
-        fprintf(stderr, "hot_lru_pct + warm_lru_pct cannot be more than 80%% combined\n");
-        exit(EX_USAGE);
     }
 
     if (hash_init(hash_type) != 0) {
@@ -5620,7 +5455,6 @@ int main (int argc, char **argv) {
 
     /* initialize other stuff */
     stats_init();
-   // assoc_init(settings.hashpower_init);
     assoc_hopscotch_init(settings.hashpower_init);
     conn_init();
     slabs_init(settings.maxbytes, settings.factor, preallocate);
@@ -5636,21 +5470,6 @@ int main (int argc, char **argv) {
     /* start up worker threads if MT mode */
     memcached_thread_init(settings.num_threads, main_base);
 
-#if 0
-    if (start_assoc_maintenance_thread() == -1) {
-        exit(EXIT_FAILURE);
-    }
-
-    if (start_lru_crawler && start_item_crawler_thread() != 0) {
-        fprintf(stderr, "Failed to enable LRU crawler thread\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (start_lru_maintainer && start_lru_maintainer_thread() != 0) {
-        fprintf(stderr, "Failed to enable LRU maintainer thread\n");
-        return 1;
-    }
-#endif
 
     if (settings.slab_reassign &&
         start_slab_maintenance_thread() == -1) {
