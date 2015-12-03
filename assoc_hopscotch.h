@@ -13,7 +13,6 @@ typedef uint32_t BitmapType;
 struct _Bucket {
 	BitmapType bitmap; // neighborhood info bitmap
 	item* it; // item details
-	bool full; // is the bucket full
 } __attribute__((__packed__));
 
 typedef struct _Bucket Bucket;

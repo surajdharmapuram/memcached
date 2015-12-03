@@ -24,6 +24,8 @@
 typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
 typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
+/* how many powers of 2's worth of buckets we use */
+extern unsigned int hashpower;// = HASHPOWER_DEFAULT;
 #define hashsize(n) ((ub4)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 
@@ -40,7 +42,7 @@ static unsigned int hash_items = 0;
 static Bucket* buckets;
 
 void assoc_hopscotch_init(const int hashtable_init) {
-	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered init");
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered init with value %d\n", hashtable_init);
 	hashpower = HASHPOWER_DEFAULT;
 	if (hashtable_init) {
 		hashpower = hashtable_init;
@@ -115,7 +117,6 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 				}
 
 				(*free_bucket)->it = new_free_bucket->it;
-				(*free_bucket)->full = true;
 				*free_bucket = new_free_bucket;
 
 				move_bucket->bitmap |= (1U << move_free_dist);
@@ -143,7 +144,7 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
 int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 
-	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered insert\n");
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Entered insert\n");
 	const unsigned int num_buckets = hashsize(hashpower);
 
 	// TODO: look at the expansion code
@@ -153,18 +154,22 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 	// linear probe for the first free slot
 	// TODO: find out what HASH_EMPTY etc are
 	// TODO: INSERT_RANGE, end of page etc
-	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Before loop start index %d\n", start_index);
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Before loop start index %d\n", start_index);
 
 	for (; start_index + free_distance < num_buckets; ++free_distance) {
 		// found an empty bucket
-		if (!buckets[start_index  + free_distance].full) { DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Found free bucket\n"); break; }
+#if 0
+		if (!buckets[start_index  + free_distance].full) { //DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Found free bucket\n"); 
+								   break; }
+#endif
+		if (buckets[start_index + free_distance].it == NULL)
+			break;
 	}
 
-	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Hashed to %d at free distance %d, starting at %d at address %p ", hv, free_distance, start_index, (void *)it);
-	fflush(stdout);
+	//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Hashed to %d at free distance %d, starting at %d at address %p ", hv, free_distance, start_index, (void *)it);
+	//fflush(stdout);
 
 	Bucket* current_bucket = &buckets[start_index + free_distance];
-	// TODO: why do we need a loop here?
 	do {
 		if (free_distance < NEIGHBORHOOD) {
 			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside break condition %d\n", free_distance);
@@ -179,7 +184,6 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 			}
 
 			current_bucket->it = it;
-			current_bucket->full = true;
 			buckets[start_index].bitmap |= (1U << free_distance);
 
 			// stats can be changed without lock, since we assume only one writer
@@ -331,7 +335,6 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 	else if (hop_info == 1U) {
 		if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)){
 			buckets[start_bucket].it = NULL;
-			buckets[start_bucket].full = false;
 			buckets[start_bucket].bitmap = 0U;
 			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket);
 			return;
@@ -347,7 +350,6 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 			buckets[start_bucket].bitmap &= ~(mask);
 			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket + i);
 			buckets[start_bucket + i].it = NULL;
-			buckets[start_bucket + i].full = false;
 			return;
 		}
 		hop_info &= ~(1U << i);
