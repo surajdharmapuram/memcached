@@ -238,3 +238,7 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+INSTALL
+autom4te.cache/output.1
+autom4te.cache/traces.1
