@@ -20,6 +20,7 @@
 #include <string.h>
 #include <assert.h>
 #include <pthread.h>
+#include "debug.h"
 
 /* powers-of-N allocation structures */
 
@@ -76,7 +77,7 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id);
    if maxslabs is 18 (POWER_LARGEST - POWER_SMALLEST + 1), then all
    slab types can be made.  if max memory is less than 18 MB, only the
    smaller ones will be made.  */
-static void slabs_preallocate (const unsigned int maxslabs);
+//static void slabs_preallocate (const unsigned int maxslabs);
 
 /*
  * Figures out which slab class (chunk size) is required to store an item of
@@ -154,10 +155,11 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc) {
     }
 
     if (prealloc) {
-        slabs_preallocate(power_largest);
+        //slabs_preallocate(power_largest);
     }
 }
 
+#if 0
 static void slabs_preallocate (const unsigned int maxslabs) {
     int i;
     unsigned int prealloc = 0;
@@ -180,6 +182,7 @@ static void slabs_preallocate (const unsigned int maxslabs) {
     }
 
 }
+#endif
 
 static int grow_slab_list (const unsigned int id) {
     slabclass_t *p = &slabclass[id];
@@ -217,22 +220,23 @@ static int do_slabs_newslab(const unsigned int id) {
         : p->size * p->perslab;
     char *ptr;
 
-    if ((mem_limit && mem_malloced + len > mem_limit && p->slabs > 0)) {
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: mem_limit = %u, len = %u\n",
+		__func__, __LINE__, (unsigned int)mem_limit, (unsigned int)len);
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: p->slabs = %u\n", __func__, __LINE__, p->slabs);
+    if ((mem_limit && mem_malloced + len > mem_limit && p->slabs > 0) ||
+	(grow_slab_list(id) == 0) ||
+	((ptr = memory_allocate((size_t)len)) == 0)) {
         mem_limit_reached = true;
         MEMCACHED_SLABS_SLABCLASS_ALLOCATE_FAILED(id);
-        return 0;
-    }
-
-    if ((grow_slab_list(id) == 0) ||
-        ((ptr = memory_allocate((size_t)len)) == 0)) {
-
-        MEMCACHED_SLABS_SLABCLASS_ALLOCATE_FAILED(id);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: mem_limit = %u, mem_malloced = %u, len = %d\n", __func__, __LINE__,
+		(unsigned int)mem_limit, (unsigned int)mem_malloced, len);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: returning 0\n", __func__, __LINE__);
         return 0;
     }
 
     memset(ptr, 0, (size_t)len);
 	// TODO: Should this be commented?
-    //split_slab_page_into_freelist(ptr, id);
+    split_slab_page_into_freelist(ptr, id);
 
     p->slab_list[p->slabs++] = ptr;
 #ifdef HOPSCOTCH_CLOCK
@@ -251,15 +255,18 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
 
     if (id < POWER_SMALLEST || id > power_largest) {
         MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
+	printf("%s:%d returning NULL from here\n", __func__, __LINE__);
         return NULL;
     }
     p = &slabclass[id];
     assert(p->sl_curr == 0 || ((item *)p->slots)->slabs_clsid == 0);
 
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: sl_curr = %u\n", __func__, __LINE__, p->sl_curr);
     /* fail unless we have space at the end of a recently allocated page,
        we have something on our freelist, or we could allocate a new page */
     if (! (p->sl_curr != 0 || do_slabs_newslab(id) != 0)) {
         /* We don't have more memory available */
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d returning NULL from here\n", __func__, __LINE__);
         ret = NULL;
     } else if (p->sl_curr != 0) {
         /* return off our freelist */
@@ -267,7 +274,9 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
 		slabbed_item* sl_it = (slabbed_item *)p->slots;
 		p->slots = sl_it->next;
 		if (sl_it->next) sl_it->next->prev = 0;
-		__sync_fetch_and_and(&sl_it->it_flags, ~ITEM_SLABBED);
+		//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: before it_flags = %u\n", __func__, __LINE__, sl_it->it_flags);
+		//__sync_fetch_and_and(&sl_it->it_flags, ~ITEM_SLABBED);
+		//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: after it_flags = %u\n", __func__, __LINE__, sl_it->it_flags);
 		ret = (void *)sl_it;
 #else
         item *it = (item *)p->slots;
@@ -275,7 +284,9 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         if (it->next) it->next->prev = 0;
         /* Kill flag and initialize refcount here for lock safety in slab
          * mover's freeness detection. */
+		DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: before it_flags = %u\n", __func__, __LINE__, sl_it->it_flags);
         it->it_flags &= ~ITEM_SLABBED;
+		DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: after it_flags = %u\n", __func__, __LINE__, sl_it->it_flags);
         it->refcount = 1;
         ret = (void *)it;
 #endif
@@ -289,12 +300,14 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         MEMCACHED_SLABS_ALLOCATE_FAILED(size, id);
     }
 
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d returning ret = %p from here\n", __func__, __LINE__, ret);
     return ret;
 }
 
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     slabclass_t *p;
 
+    assert(((item *)ptr)->slabs_clsid == 0);
     assert(id >= POWER_SMALLEST && id <= power_largest);
     if (id < POWER_SMALLEST || id > power_largest)
         return;
@@ -305,8 +318,10 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
 #ifdef HOPSCOTCH_CLOCK
 	slabbed_item *sl_it = (slabbed_item *)ptr;
 	__sync_fetch_and_or(&sl_it->it_flags, ITEM_SLABBED);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: it_flags = %u\n", __func__, __LINE__,
+		sl_it->it_flags);
 	// TODO: This is not done in memc3
-	sl_it->slabs_clsid = 0;
+	//sl_it->slabs_clsid = 0;
 	sl_it->prev = 0;
 	sl_it->next = p->slots;
 	if (sl_it->next)
@@ -407,6 +422,8 @@ static void *memory_allocate(size_t size) {
     } else {
         ret = mem_current;
 
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "size = %u, mem_avail = %u\n",
+			(unsigned int)size, (unsigned int)mem_avail);
         if (size > mem_avail) {
             return NULL;
         }
@@ -485,6 +502,7 @@ static volatile int do_run_slab_rebalance_thread = 1;
 #define DEFAULT_SLAB_BULK_CHECK 1
 int slab_bulk_check = DEFAULT_SLAB_BULK_CHECK;
 
+#if 0
 static int slab_rebalance_start(void) {
     slabclass_t *s_cls;
     int no_go = 0;
@@ -779,12 +797,14 @@ static int slab_automove_decision(int *src, int *dst) {
     }
     return 0;
 }
+#endif
 
 /* Slab rebalancer thread.
  * Does not use spinlocks since it is not timing sensitive. Burn less CPU and
  * go to sleep if locks are contended
  */
 static void *slab_maintenance_thread(void *arg) {
+#if 0
     int src, dest;
 
     while (do_run_slab_thread) {
@@ -800,9 +820,11 @@ static void *slab_maintenance_thread(void *arg) {
             sleep(5);
         }
     }
+#endif
     return NULL;
 }
 
+#if 0
 /* Slab mover thread.
  * Sits waiting for a condition to jump off and shovel some memory about
  */
@@ -838,6 +860,7 @@ static void *slab_rebalance_thread(void *arg) {
     }
     return NULL;
 }
+#endif
 
 /* Iterate at most once through the slab classes and pick a "random" source.
  * I like this better than calling rand() since rand() is slow enough that we
@@ -922,22 +945,26 @@ int start_slab_maintenance_thread(void) {
         }
     }
 
+#if 0
     if (pthread_cond_init(&slab_rebalance_cond, NULL) != 0) {
         fprintf(stderr, "Can't intiialize rebalance condition\n");
         return -1;
     }
     pthread_mutex_init(&slabs_rebalance_lock, NULL);
+#endif
 
     if ((ret = pthread_create(&maintenance_tid, NULL,
                               slab_maintenance_thread, NULL)) != 0) {
         fprintf(stderr, "Can't create slab maint thread: %s\n", strerror(ret));
         return -1;
     }
+#if 0
     if ((ret = pthread_create(&rebalance_tid, NULL,
                               slab_rebalance_thread, NULL)) != 0) {
         fprintf(stderr, "Can't create rebal thread: %s\n", strerror(ret));
         return -1;
     }
+#endif
     return 0;
 }
 
@@ -1087,5 +1114,20 @@ void slabs_cache_update(item *it)
 	}
 }
 
-//void print_slab_clock()
+void print_slab_clock(unsigned int id)
+{
+	int i;
+	slabclass_t *p;
+
+	p = &slabclass[id];
+	for (i = 0; i < p->clock_max; i++) {
+		if (bv_getbit(p->bitmap, i) == 0)
+			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "0");
+		else
+			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "1");
+	}
+
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "\n");
+}
+
 #endif

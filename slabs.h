@@ -52,6 +52,7 @@ void slabs_rebalancer_resume(void);
 #ifdef HOPSCOTCH_CLOCK
 item* slabs_cache_evict(unsigned int id);
 void slabs_cache_update(item *it);
+void print_slab_clock(unsigned int id);
 #endif
 
 #endif

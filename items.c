@@ -13,6 +13,7 @@
 #include <time.h>
 #include <assert.h>
 #include <unistd.h>
+#include "debug.h"
 
 /* Forward Declarations */
 static void item_link_q(item *it);
@@ -95,11 +96,18 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     if ((it = slabs_alloc(ntotal, id)) == NULL) {
         item *search = NULL;
 #ifdef HOPSCOTCH_CLOCK
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Bitmap Before eviction:\n");
+	//print_slab_clock(id);
         search = slabs_cache_evict(id);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Bitmap After eviction:\n");
+	//print_slab_clock(id);
 #endif
 
         if ((search == NULL) || ((search->it_flags & ITEM_LINKED) != 1)) {
+		printf("SWAPNIL: setting OOM, search = %p, it_flags = %u\n",
+			(void *)search, search->it_flags);
             itemstats[id].outofmemory++;
+	    mutex_unlock(&cache_lock);
             return NULL;
         }
             
@@ -138,6 +146,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     DEBUG_REFCNT(it, '*');
 
     it->it_flags = settings.use_cas ? ITEM_CAS : 0;
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: it_flags = %u\n", __func__, __LINE__,
+	     it->it_flags);
     it->nkey = nkey;
     it->nbytes = nbytes;
     memcpy(ITEM_key(it), key, nkey);
@@ -204,6 +214,8 @@ int do_item_link_nolock(item *it, const uint32_t hv) {
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     //it->it_flags |= ITEM_LINKED;
     __sync_fetch_and_or(&it->it_flags, ITEM_LINKED);
+    DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: it_flags = %u\n", __func__, __LINE__,
+	     it->it_flags);
 
     it->time = current_time;
 
@@ -218,7 +230,7 @@ int do_item_link_nolock(item *it, const uint32_t hv) {
     //assoc_insert(it, hv);
     int ret = assoc_hopscotch_insert(it,hv);
     if(ret == 0) // could not insert.
-    	return 0;
+	    assert(false);
     item_link_q(it);
     assert((it->slabs_clsid > 0));
 
@@ -239,6 +251,8 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
 
         //it->it_flags &= ~ITEM_LINKED;
         __sync_fetch_and_and(&it->it_flags, ~ITEM_LINKED);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: it_flags = %u\n", __func__, __LINE__,
+			it->it_flags);
         
         STATS_LOCK();
         stats.curr_bytes -= ITEM_ntotal(it);
@@ -302,6 +316,8 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv) {
         //refcount_incr(&it->refcount);
         //it->it_flags |= ITEM_FETCHED;
         __sync_fetch_and_or(&it->it_flags, ITEM_FETCHED);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "%s:%d: it_flags = %u\n", __func__, __LINE__,
+			it->it_flags);
         //assert(memcmp(ITEM_key(it), key, nkey) == 0);
     }
 

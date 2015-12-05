@@ -103,7 +103,8 @@ static void conn_free(conn *c);
 
 /* Debug Stuff */
 int debug_level = 0;
-int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
+//int debug_flags = DBG_MEMCACHED | DBG_ASSOC | DBG_ASSOC_HOPSCOTCH;
+int debug_flags = 0;
 
 /** exported globals **/
 struct stats stats;
@@ -2295,6 +2296,7 @@ static void complete_nread(conn *c) {
  * Returns the state of storage.
  */
 enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t hv) {
+#if 0
     char *key = ITEM_key(it);
     item *old_it = do_item_get(key, it->nkey, hv);
     enum store_item_type stored = NOT_STORED;
@@ -2411,6 +2413,35 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
     }
 
     return stored;
+#endif
+    enum store_item_type stored;
+    char *key = ITEM_key(it);
+    item *old_it = do_item_get(key, it->nkey, hv);
+
+    if (old_it != NULL) {
+	    assert(old_it != it);
+	    //TODO Memc3 has before_/after_write
+	    //before_write(old_it);
+	    do_item_unlink_nolock(old_it, hv);
+	    item_free(old_it);
+	    assert((old_it->it_flags & ITEM_LINKED) == 0);
+	    assert((old_it->it_flags & ITEM_SLABBED) != 0);
+	    //TODO Memc3 has after_write
+	    //after_write(old_it);
+    }
+    //before_write(it);
+    int ret = do_item_link_nolock(it, hv);
+    //after_write(it);
+    
+    if (ret == 0) {
+	    stored = NOT_STORED;
+	    printf("not stored\n");
+    } else {
+	    stored = STORED;
+    }
+
+    return stored;
+
 }
 
 typedef struct token_s {
@@ -5457,6 +5488,7 @@ int main (int argc, char **argv) {
     stats_init();
     assoc_hopscotch_init(settings.hashpower_init);
     conn_init();
+    preallocate = true;
     slabs_init(settings.maxbytes, settings.factor, preallocate);
 
     /*
