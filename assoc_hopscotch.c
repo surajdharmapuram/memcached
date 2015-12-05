@@ -36,14 +36,6 @@ unsigned int hashpower = HASHPOWER_DEFAULT;
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
 
-struct _Bucket {
-	BitmapType bitmap; // neighborhood info bitmap
-	item* it; // item details
-	//bool full; // is the bucket full
-} __attribute__((__packed__));
-
-typedef struct _Bucket Bucket;
-
 static Bucket* buckets;
 
 void assoc_hopscotch_init(const int hashtable_init) {
@@ -61,10 +53,29 @@ void assoc_hopscotch_init(const int hashtable_init) {
 
 	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Created %lu buckets\n", hashsize(hashpower));
 
+	// TODO: wrap this in a ifdef
+	memset(keyver_array, 0, sizeof(keyver_array));
+
 	STATS_LOCK();
 	stats.hash_power_level = hashpower;
 	stats.hash_bytes = hashsize(hashpower) * sizeof(Bucket);
 	STATS_UNLOCK();
+}
+
+static long index_of_bucket(Bucket* _bucket) {
+	return _bucket - buckets;
+}
+
+void lock_incr_keyver(long idx) {
+	incr_keyver(idx);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "LOCK INCR: Key version of bucket %ld is %d\n",
+			idx, read_keyver(idx));
+}
+
+void unlock_incr_keyver(long idx) {
+	incr_keyver(idx);
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "UNLOCK INCR: Key version of bucket %ld is %d\n",
+			idx, read_keyver(idx));
 }
 
 static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_distance) {
@@ -89,13 +100,33 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 			if (bitmap == move_bucket->bitmap) {
 				//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside here\n");
 				Bucket* new_free_bucket = move_bucket + move_new_free_distance;
+
+				long idx_free = index_of_bucket(*free_bucket);
+				long idx_move = index_of_bucket(move_bucket);
+				long idx_new_free = index_of_bucket(new_free_bucket);
+
+				lock_incr_keyver(idx_free);
+				lock_incr_keyver(idx_move);
+				// move_bucket is new_free_bucket,
+				// make sure not to duplicate key version incr
+				if (move_new_free_distance != 0) {
+					lock_incr_keyver(idx_new_free);
+				}
+
 				(*free_bucket)->it = new_free_bucket->it;
-				//(*free_bucket)->full = true;
+				*free_bucket = new_free_bucket;
 
 				move_bucket->bitmap |= (1U << move_free_dist);
 				move_bucket->bitmap &= ~(1U << move_new_free_distance);
 
-				*free_bucket = new_free_bucket;
+				unlock_incr_keyver(idx_free);
+				unlock_incr_keyver(idx_move);
+				// move_bucket is new_free_bucket,
+				// make sure not to duplicate key version incr
+				if (move_new_free_distance != 0) {
+					unlock_incr_keyver(idx_new_free);
+				}
+
 				*free_distance -= (move_free_dist - move_new_free_distance);
 
 				return;
@@ -138,10 +169,29 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 	Bucket* current_bucket = &buckets[start_index + free_distance];
 	do {
 		if (free_distance < NEIGHBORHOOD) {
-			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside break condition %d\n", free_distance);
+			DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Inside break condition %d\n", free_distance);
+
+			long idx_start = start_index;
+			long idx_curr = index_of_bucket(current_bucket);
+
+			// start of write, key version increment
+			lock_incr_keyver(idx_curr);
+			if (current_bucket != &buckets[start_index]) {
+				lock_incr_keyver(idx_start);
+			}
+
 			current_bucket->it = it;
-			//current_bucket->full = true;
 			buckets[start_index].bitmap |= (1U << free_distance);
+
+			// stats can be changed without lock, since we assume only one writer
+			hash_items++;
+
+			// end of write, key version increment
+			unlock_incr_keyver(idx_curr);
+			if (current_bucket != &buckets[start_index]) {
+				unlock_incr_keyver(idx_start);
+			}
+
 			break;
 		}
 		find_closer_free_bucket(&current_bucket, &free_distance);
@@ -151,15 +201,20 @@ int assoc_hopscotch_insert(item *it, const uint32_t hv) {
 	if(current_bucket == 0)
 		return 0;
 
+	/*
+	pthread_mutex_lock(&hash_items_counter_lock);
 	hash_items++;
 	// TODO: look at expanding code
+	pthread_mutex_unlock(&hash_items_counter_lock);
+	*/
 
 	MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey, hash_items);
 
 	return 1;
 }
 
-item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv){
+/*
+item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv) {
 
 	register unsigned int start_bucket = hv & hashmask(hashpower);
 	BitmapType hop_info = buckets[start_bucket].bitmap;
@@ -187,6 +242,82 @@ item *assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv
 	return NULL;
 
 }
+*/
+
+static item* find_item(Bucket* start_bucket, const char* key, const size_t nkey) {
+
+	BitmapType hop_info = start_bucket->bitmap;
+	item* it = start_bucket->it;
+
+	DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo for key %s is %u\n", key, hop_info);
+
+	if (hop_info == 0U) {
+		return NULL;
+	}
+
+	item* ret = NULL;
+
+	uint32_t vs, ve;
+	long start_idx = index_of_bucket(start_bucket);
+
+	if (hop_info == 1U) {
+		DBG_INFO(DBG_ASSOC_HOPSCOTCH, "HopInfo is equal to 1\n");
+		do {
+			vs = read_keyver(start_idx);
+
+			if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
+				ret = it;
+			}
+
+			ve = read_keyver(start_idx);
+		} while ((vs & 1) || (vs != ve));
+
+		return ret;
+	}
+
+	while(hop_info != 0U) {
+		int i = first_lsb_bit_indx(hop_info);
+		Bucket* current_element = buckets + start_idx + i;
+
+		bool found = false;
+
+		do {
+			long idx = index_of_bucket(current_element);
+			vs = read_keyver(idx);
+
+			if ((nkey == current_element->it->nkey) && (memcmp(key, ITEM_key(current_element->it), nkey) == 0)) {
+				ret = it;
+				found = true;
+			}
+
+			ve = read_keyver(idx);
+		} while ((vs & 1) || (vs != ve));
+
+		if (found) {
+			return ret;
+		}
+
+		hop_info &= ~(1U << i);
+	}
+
+	return NULL;
+}
+
+item* assoc_hopscotch_find(const char *key, const size_t nkey, const uint32_t hv) {
+	unsigned int start_index = hv & hashmask(hashpower);
+	uint32_t vs, ve;
+	item* ret = NULL;
+
+	do {
+		vs = read_keyver(start_index);
+
+		ret = find_item(&buckets[start_index], key, nkey);
+
+		ve = read_keyver(start_index);
+	} while ((vs & 1) || (vs != ve));
+
+	return ret;
+}
 
 void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t hv){
 
@@ -201,7 +332,6 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 	else if (hop_info == 1U) {
 		if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)){
 			buckets[start_bucket].it = NULL;
-			//buckets[start_bucket].full = false;
 			buckets[start_bucket].bitmap = 0U;
 			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket);
 			return;
@@ -217,7 +347,6 @@ void assoc_hopscotch_delete(const char *key, const size_t nkey, const uint32_t h
 			buckets[start_bucket].bitmap &= ~(mask);
 			//DBG_INFO(DBG_ASSOC_HOPSCOTCH, "Deleted from index %d\n", start_bucket + i);
 			buckets[start_bucket + i].it = NULL;
-			//buckets[start_bucket + i].full = false;
 			return;
 		}
 		hop_info &= ~(1U << i);

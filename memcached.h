@@ -634,3 +634,27 @@ extern void drop_privileges(void);
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
+
+// introduced to simplify calling memory barriers
+// memory barriers are needed because we avoid locks by doing
+// optimistic locking
+#define memory_barrier() __sync_synchronize()
+
+#define before_write(it) \
+	memory_barrier()
+
+#define after_write(it) \
+	memory_barrier()
+
+// TODO: maybe wrap this in a ifdef
+// introduced for ease of maintaining key versions
+#define  keyver_count ((unsigned long int)1 << (13))
+#define  keyver_mask  (keyver_count - 1)
+uint32_t keyver_array[keyver_count];
+#define read_keyver(lock) \
+    __sync_fetch_and_add(&keyver_array[lock & keyver_mask], 0)
+
+#define incr_keyver(lock) \
+    __sync_fetch_and_add(&keyver_array[lock & keyver_mask], 1)
+
+
