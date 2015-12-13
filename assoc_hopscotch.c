@@ -31,6 +31,7 @@ unsigned int hashpower = HASHPOWER_DEFAULT;
 
 // unsigned int hashpower = HASHPOWER_DEFAULT;
 
+// TODO: keep at 32 for prod
 #define NEIGHBORHOOD 32
 
 /* Number of items in the hash table. */
@@ -112,6 +113,9 @@ static void find_closer_free_bucket(Bucket** free_bucket, unsigned int* free_dis
 				if (move_new_free_distance != 0) {
 					lock_incr_keyver(idx_new_free);
 				}
+
+                // we don't take STATS_LOCK because we assume single writer
+                stats.num_displacements += 1;
 
 				(*free_bucket)->it = new_free_bucket->it;
 				*free_bucket = new_free_bucket;

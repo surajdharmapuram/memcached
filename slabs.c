@@ -353,6 +353,22 @@ bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c) {
     bool ret = true;
 
     // removed by Bin
+    // readded by UD
+    
+    if (add_stats != NULL) {
+        if (!stat_type) {
+            /* prepare general statistics for the engine */
+            STATS_LOCK();
+            append_stat("curr_bytes", add_stats, c, "%llu", (unsigned long long)stats.curr_bytes);
+            append_stat("curr_items", add_stats, c, "%u", stats.curr_items);
+            append_stat("total_items", add_stats, c, "%u", stats.total_items);
+            append_stat("num_displacements", add_stats, c, "%u", stats.num_displacements);
+            STATS_UNLOCK();
+        } else {
+            ret = false;
+        }
+    }
+
     return ret;
 }
 

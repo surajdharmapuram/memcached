@@ -80,11 +80,11 @@ am__installdirs = "$(DESTDIR)$(man1dir)"
 NROFF = nroff
 MANS = $(man_MANS)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/missing --run aclocal-1.11
+ACLOCAL = ${SHELL} /home/ec2-user/memcached/missing --run aclocal-1.11
 AMTAR = $${TAR-tar}
-AUTOCONF = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/missing --run autoconf
-AUTOHEADER = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/missing --run autoheader
-AUTOMAKE = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/missing --run automake-1.11
+AUTOCONF = ${SHELL} /home/ec2-user/memcached/missing --run autoconf
+AUTOHEADER = ${SHELL} /home/ec2-user/memcached/missing --run autoheader
+AUTOMAKE = ${SHELL} /home/ec2-user/memcached/missing --run automake-1.11
 AWK = gawk
 CC = gcc -std=gnu99
 CCDEPMODE = depmode=gcc3
@@ -110,9 +110,9 @@ INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 LDFLAGS = 
 LIBOBJS = 
-LIBS = -levent -lrt 
+LIBS = -levent 
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/missing --run makeinfo
+MAKEINFO = ${SHELL} /home/ec2-user/memcached/missing --run makeinfo
 MKDIR_P = /bin/mkdir -p
 OBJEXT = o
 PACKAGE = memcached
@@ -127,15 +127,15 @@ PROFILER = /usr/bin/gcov
 PROFILER_FLAGS = -fprofile-arcs -ftest-coverage
 PROFILER_LDFLAGS = -lgcov
 SET_MAKE = 
-SHELL = /bin/bash
+SHELL = /bin/sh
 STRIP = 
 VERSION = 1.4.23
 XML2RFC = no
-XSLTPROC = no
-abs_builddir = /users/spimpale/15712/modified_memcached/memcached/doc
-abs_srcdir = /users/spimpale/15712/modified_memcached/memcached/doc
-abs_top_builddir = /users/spimpale/15712/modified_memcached/memcached
-abs_top_srcdir = /users/spimpale/15712/modified_memcached/memcached
+XSLTPROC = /usr/bin/xsltproc
+abs_builddir = /home/ec2-user/memcached/doc
+abs_srcdir = /home/ec2-user/memcached/doc
+abs_top_builddir = /home/ec2-user/memcached
+abs_top_srcdir = /home/ec2-user/memcached
 ac_ct_CC = gcc
 am__include = include
 am__leading_dot = .
@@ -162,7 +162,7 @@ host_vendor = unknown
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /users/spimpale/15712/modified_memcached/memcached/install-sh
+install_sh = ${SHELL} /home/ec2-user/memcached/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -434,16 +434,16 @@ uninstall-man: uninstall-man1
 
 
 protocol-binary.txt: $(.TARGET:R).full
-	no -c /users/spimpale/15712/modified_memcached/memcached/doc $(.TARGET:R).full $@
+	no -c /home/ec2-user/memcached/doc $(.TARGET:R).full $@
 
 protocol-binary-range.txt: $(.TARGET:R).full
-	no -c /users/spimpale/15712/modified_memcached/memcached/doc $(.TARGET:R).full $@
+	no -c /home/ec2-user/memcached/doc $(.TARGET:R).full $@
 
 protocol-binary.full: $(.TARGET:R).xml xml2rfc/rfc2629-noinc.xsl
-	no --nonet xml2rfc/rfc2629-noinc.xsl $(.TARGET:R).xml > $@
+	/usr/bin/xsltproc --nonet xml2rfc/rfc2629-noinc.xsl $(.TARGET:R).xml > $@
 
 protocol-binary-range.full: $(.TARGET:R).xml xml2rfc/rfc2629-noinc.xsl
-	no --nonet xml2rfc/rfc2629-noinc.xsl $(.TARGET:R).xml > $@
+	/usr/bin/xsltproc --nonet xml2rfc/rfc2629-noinc.xsl $(.TARGET:R).xml > $@
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

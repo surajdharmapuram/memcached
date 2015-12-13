@@ -290,6 +290,8 @@ struct stats {
     uint64_t      lru_crawler_starts; /* Number of item crawlers kicked off */
     bool          lru_crawler_running; /* crawl in progress */
     uint64_t      lru_maintainer_juggles; /* number of LRU bg pokes */
+
+    unsigned int  num_displacements; /* total number of displacements (hopscotch) */
 };
 
 #define MAX_VERBOSITY_LEVEL 2
