@@ -3253,7 +3253,10 @@ static void process_arithmetic_command(conn *c, token_t *tokens, const size_t nt
  * buf   buffer for response string
  *
  * returns a response string to send back to the client.
+ *
+ *
  */
+/*
 enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
                                     const bool incr, const int64_t delta,
                                     char *buf, uint64_t *cas,
@@ -3268,7 +3271,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         return DELTA_ITEM_NOT_FOUND;
     }
 
-    /* Can't delta zero byte values. 2-byte are the "\r\n" */
+     Can't delta zero byte values. 2-byte are the "\r\n" 
     if (it->nbytes <= 2) {
         return NON_NUMERIC;
     }
@@ -3307,12 +3310,12 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
 
     snprintf(buf, INCR_MAX_STORAGE_LEN, "%llu", (unsigned long long)value);
     res = strlen(buf);
-    /* refcount == 2 means we are the only ones holding the item, and it is
+     refcount == 2 means we are the only ones holding the item, and it is
      * linked. We hold the item's lock in this function, so refcount cannot
-     * increase. */
-    if (res + 2 <= it->nbytes && it->refcount == 2) { /* replace in-place */
+     * increase. 
+    if (res + 2 <= it->nbytes && it->refcount == 2) {  replace in-place */
         /* When changing the value without replacing the item, we
-           need to update the CAS on the existing item. */
+           need to update the CAS on the existing item./
         ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
 
         memcpy(ITEM_data(it), buf, res);
@@ -3331,10 +3334,10 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         // Overwrite the older item's CAS with our new CAS since we're
         // returning the CAS of the old item below.
         ITEM_set_cas(it, (settings.use_cas) ? ITEM_get_cas(new_it) : 0);
-        do_item_remove(new_it);       /* release our reference */
+        do_item_remove(new_it);        release our reference 
     } else {
-        /* Should never get here. This means we somehow fetched an unlinked
-         * item. TODO: Add a counter? */
+        Should never get here. This means we somehow fetched an unlinked
+         * item. TODO: Add a counter? 
         if (settings.verbose) {
             fprintf(stderr, "Tried to do incr/decr on invalid item\n");
         }
@@ -3344,11 +3347,12 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
     }
 
     if (cas) {
-        *cas = ITEM_get_cas(it);    /* swap the incoming CAS value */
-    }
-    do_item_remove(it);         /* release our reference */
-    return OK;
-}
+        *cas = ITEM_get_cas(it);     swap the incoming CAS value */
+   // }
+    //do_item_remove(it);         /* release our reference */
+   // return OK;
+//}
+
 
 static void process_delete_command(conn *c, token_t *tokens, const size_t ntokens) {
     char *key;
